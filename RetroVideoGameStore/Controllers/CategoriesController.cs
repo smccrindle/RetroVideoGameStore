@@ -29,5 +29,10 @@ namespace RetroVideoGameStore.Controllers
             ViewBag.categoryName = categoryName;
             return View();
         }
+        public IActionResult AddCategory()
+        {
+            // Display a form for the user to add a new category
+            return View();
+        }
     }
 }
