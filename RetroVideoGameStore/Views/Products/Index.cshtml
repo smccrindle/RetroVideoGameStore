@@ -41,7 +41,11 @@
                 @Html.DisplayFor(modelItem => item.Price)
             </td>
             <td>
-                @Html.DisplayFor(modelItem => item.Photo)
+                    @if (item.Photo != null)
+                    {
+                        <img src="~/img/product-uploads/@item.Photo" alt="@item.Name product image" class="img-thumb" />
+                    }
+                @* @Html.DisplayFor(modelItem => item.Photo) *@
             </td>
             <td>
                 @Html.DisplayFor(modelItem => item.Description)
