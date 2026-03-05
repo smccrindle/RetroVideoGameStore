@@ -15,6 +15,18 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.Requ
     .AddEntityFrameworkStores<ApplicationDbContext>();
 builder.Services.AddControllersWithViews();
 
+// Adding Google OAuth
+builder.Services.AddAuthentication()
+    .AddGoogle(options =>
+    {
+        // Accessing configuration directly via the builder
+        options.ClientId = builder.Configuration["Authentication:Google:ClientId"] 
+            ?? throw new InvalidOperationException("Google ClientId not found.");
+            
+        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] 
+            ?? throw new InvalidOperationException("Google ClientSecret not found.");
+    });
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -32,6 +44,7 @@ else
 app.UseHttpsRedirection();
 app.UseRouting();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
