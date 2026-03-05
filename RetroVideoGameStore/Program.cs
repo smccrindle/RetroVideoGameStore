@@ -19,12 +19,8 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddAuthentication()
     .AddGoogle(options =>
     {
-        // Accessing configuration directly via the builder
-        options.ClientId = builder.Configuration["Authentication:Google:ClientId"] 
-            ?? throw new InvalidOperationException("Google ClientId not found.");
-            
-        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] 
-            ?? throw new InvalidOperationException("Google ClientSecret not found.");
+        options.ClientId = builder.Configuration["Authentication:Google:ClientId"];
+        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
     });
 
 var app = builder.Build();
