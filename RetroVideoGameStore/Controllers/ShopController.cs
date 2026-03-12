@@ -1,5 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using RetroVideoGameStore.Data;
+using RetroVideoGameStore.Models;
 
 namespace RetroVideoGameStore.Controllers
 {
@@ -18,6 +20,68 @@ namespace RetroVideoGameStore.Controllers
             // Get list of categories
             var categories = _context.Categories.OrderBy(c => c.Name).ToList();
             return View(categories);
+        }
+
+        // Shop/Browse/3
+        public IActionResult Browse(int id)
+        {
+            // Get products in selected category
+            var products = _context.Products.Where(p => p.CategoryId == id).OrderBy(products => products.Name).ToList();
+
+            // Load the browse page and pass it the list of products to display
+            return View(products);
+        }
+
+        // Shop/AddToCart
+        [HttpPost]
+        public IActionResult AddToCart(int ProductId, int Quantity)
+        {
+            // Get current product price
+            var price = _context.Products.Find(ProductId).Price;
+            // Identify the customer
+            var customerId = GetCustomerId();
+            // Create a new Cart object
+            var cart = new Cart
+            {
+                ProductId = ProductId,
+                Quantity = Quantity,
+                Price = price,
+                CustomerId = customerId,
+                DateCreated = DateTime.Now
+            };
+            // Use the Carts DbSet in ApplicationContext.cs to save to the dB
+            _context.Carts.Add(cart);
+            _context.SaveChanges();
+
+            // Redirect to show the current cart
+            return RedirectToAction("Cart");
+        }
+
+        private string GetCustomerId()
+        {
+            // Is there already a session variable holding an identifier for this customer?
+            if (HttpContext.Session.GetString("CustomerId") == null)
+            {
+                // Cart is empty, user is unknown
+                var customerId = "";
+                // Use a GUID to generate a new unique identifier
+                customerId = Guid.NewGuid().ToString();
+                // Now store the new identifier in a session variable
+                HttpContext.Session.SetString("CustomerId", customerId);
+
+            }
+            return HttpContext.Session.GetString("CustomerId");
+        }
+
+        // Shop/Cart
+        public IActionResult Cart()
+        {
+            // Get CustomerId from the session variable
+            var customerId = HttpContext.Session.GetString("CustomerId");
+            // Get items in the customer's cart
+            var cartItems = _context.Carts.Include(c => c.Product).Where(c => c.CustomerId == customerId).ToList();
+            // Load the cart page and display the customer's items
+            return View(cartItems);
         }
     }
 }
