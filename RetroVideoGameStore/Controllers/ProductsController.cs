@@ -27,7 +27,7 @@ namespace RetroVideoGameStore.Controllers
             var applicationDbContext = _context.Products.Include(p => p.Category);
             return View(await applicationDbContext.OrderBy(p => p.Name).ToListAsync());
         }
-
+        [AllowAnonymous]
         // GET: Products/Details/5
         public async Task<IActionResult> Details(int? id)
         {
