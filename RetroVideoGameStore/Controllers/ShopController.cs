@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RetroVideoGameStore.Data;
 using RetroVideoGameStore.Models;
@@ -41,18 +42,32 @@ namespace RetroVideoGameStore.Controllers
             var price = _context.Products.Find(ProductId).Price;
             // Identify the customer (they are probably anonymous)
             var customerId = GetCustomerId();
-            // Create a new Cart object
-            var cart = new Cart
+
+            // Check to see if product already exists in the cart
+            var cartItem = _context.Carts.SingleOrDefault(c => c.ProductId == ProductId && c.CustomerId == customerId);
+
+            if (cartItem != null)
             {
-                ProductId = ProductId,
-                Quantity = Quantity,
-                Price = price,
-                CustomerId = customerId,
-                DateCreated = DateTime.Now
-            };
-            // Use the Carts  DbSet in ApplicationContext.cs to save to the dB
-            _context.Carts.Add(cart);
-            _context.SaveChanges();
+                // Product already exists in cart, so update quantity instead
+                cartItem.Quantity += Quantity;
+                _context.Update(cartItem);
+                _context.SaveChanges();
+            }
+            else
+            {
+                // Create a new Cart object
+                var cart = new Cart
+                {
+                    ProductId = ProductId,
+                    Quantity = Quantity,
+                    Price = price,
+                    CustomerId = customerId,
+                    DateCreated = DateTime.Now
+                };
+                // Use the Carts  DbSet in ApplicationContext.cs to save to the dB
+                _context.Carts.Add(cart);
+                _context.SaveChanges();
+            }
 
             // Redirect to show the current cart
             return RedirectToAction("Cart");
@@ -73,15 +88,63 @@ namespace RetroVideoGameStore.Controllers
             return HttpContext.Session.GetString("CustomerId");
         }
 
-        // Shop/Cart
+        // GET: Shop/Cart
         public IActionResult Cart()
         {
             // Get CustomerId from the session variable
             var customerId = HttpContext.Session.GetString("CustomerId");
             // Get items in the customer's cart (and add a reference to the parent object)
             var cartItems = _context.Carts.Include(c => c.Product).Where(c => c.CustomerId == customerId).ToList();
+
+            // Count the number of items in the cart and write a session variable to display in the navbar
+            var itemCount = (from c in _context.Carts
+                             where c.CustomerId == customerId
+                             select c.Quantity).Sum();
+            HttpContext.Session.SetInt32("ItemCount", itemCount);
+
             // Load the cart page and display the customer's items
             return View(cartItems);
+        }
+
+        // GET: /Shop/RemoveFromCart/12
+        public IActionResult RemoveFromCart(int id) 
+        {
+            // Remove the selected item from the Carts table
+            var cartItem = _context.Carts.Find(id);
+
+            if (cartItem != null)
+            {
+                _context.Carts.Remove(cartItem);
+                _context.SaveChanges();
+            }
+            // Redirect to the updated Cart page
+            return RedirectToAction("Cart");
+        }
+
+        // GET: /Shop/Checkout
+        [Authorize]
+        public IActionResult Checkout()
+        {
+            return View();
+        }
+
+        // POST: /Shop/Checkout
+        [Authorize]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult Checkout([Bind("FirstName,LastName,Address,City,Province,PostalCode,Phone")] Order order)
+        {
+            // Auto-fill the 3 properties we removed from the form
+            order.OrderDate = DateTime.Now;
+            order.CustomerId = User.Identity.Name;
+            order.OrderTotal = (from c in _context.Carts
+                                where c.CustomerId == HttpContext.Session.GetString("CustomerId")
+                                select c.Quantity * c.Price).Sum();
+            // Now store order in a session variable
+            HttpContext.Session.SetObject("Order", order);
+
+            // Load the payment page
+            return RedirectToAction("Payment");
         }
     }
 }
