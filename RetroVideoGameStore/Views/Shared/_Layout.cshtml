@@ -26,6 +26,15 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-controller="Shop" asp-action="Index">Shop Now</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="btn btn-primary position-relative" asp-area="" asp-controller="Shop" asp-action="Cart">
+                                My Cart
+                                @if (Context.Session.GetInt32("ItemCount") != 0)
+                                {
+                                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">@Context.Session.GetInt32("ItemCount")</span>
+                                }
+                            </a>
+                        </li>
                         @if (User.IsInRole("Administrator"))
                             {
                                 <li class="nav-item">

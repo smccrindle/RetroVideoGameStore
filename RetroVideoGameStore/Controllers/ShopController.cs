@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RetroVideoGameStore.Data;
 using RetroVideoGameStore.Models;
@@ -40,19 +41,33 @@ namespace RetroVideoGameStore.Controllers
             var price = _context.Products.Find(ProductId).Price;
             // Identify the customer
             var customerId = GetCustomerId();
-            // Create a new Cart object
-            var cart = new Cart
-            {
-                ProductId = ProductId,
-                Quantity = Quantity,
-                Price = price,
-                CustomerId = customerId,
-                DateCreated = DateTime.Now
-            };
-            // Use the Carts DbSet in ApplicationContext.cs to save to the dB
-            _context.Carts.Add(cart);
-            _context.SaveChanges();
 
+            // Check to see if product is already in the cart
+            var cartItem = _context.Carts.SingleOrDefault(c => c.ProductId == ProductId && c.CustomerId == customerId);
+
+            if (cartItem != null)
+            {
+                // Product already exists, so update quantity instead
+                cartItem.Quantity += Quantity;
+                _context.Update(cartItem);
+                _context.SaveChanges();
+            }
+            else
+            {
+                // Create a new Cart object
+                var cart = new Cart
+                {
+                    ProductId = ProductId,
+                    Quantity = Quantity,
+                    Price = price,
+                    CustomerId = customerId,
+                    DateCreated = DateTime.Now
+                };
+                // Use the Carts DbSet in ApplicationContext.cs to save to the dB
+                _context.Carts.Add(cart);
+                _context.SaveChanges();
+            }
+            
             // Redirect to show the current cart
             return RedirectToAction("Cart");
         }
@@ -80,8 +95,36 @@ namespace RetroVideoGameStore.Controllers
             var customerId = HttpContext.Session.GetString("CustomerId");
             // Get items in the customer's cart
             var cartItems = _context.Carts.Include(c => c.Product).Where(c => c.CustomerId == customerId).ToList();
+
+            // Count number of items in cart and write session variable to display in navbar
+            var itemCount = (from c in _context.Carts
+                             where c.CustomerId == customerId
+                             select c.Quantity).Sum();
+            HttpContext.Session.SetInt32("ItemCount", itemCount);
+
             // Load the cart page and display the customer's items
             return View(cartItems);
+        }
+
+        // GET: /Shop/RemoveFromCart/12
+        public IActionResult RemoveFromCart(int id)
+        {
+            // Remove the selected item from the Carts table
+            var cartItem = _context.Carts.Find(id);
+            if (cartItem != null)
+            {
+                _context.Carts.Remove(cartItem);
+                _context.SaveChanges();
+            }
+            // Redirect to the updated Cart page
+            return RedirectToAction("Cart");
+        }
+
+        // GET: /Shop/Checkout
+        [Authorize]
+        public IActionResult Checkout()
+        {
+            return View();
         }
     }
 }
