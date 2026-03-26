@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using RetroVideoGameStore.Data;
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -16,6 +17,10 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.Requ
 // Enable sessions
 builder.Services.AddSession();
 builder.Services.AddControllersWithViews();
+
+// Inject the Configuration info to the controllers so the ShopController() can read API keys from appsettings.json
+// Register IConfiguration instance
+builder.Services.AddSingleton<IConfiguration>(builder.Configuration);
 
 var app = builder.Build();
 

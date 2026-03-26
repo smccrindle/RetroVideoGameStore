@@ -1,8 +1,15 @@
 ﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http; // for HttpContext.Session.GetString/SetString
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using RetroVideoGameStore.Data;
 using RetroVideoGameStore.Models;
+
+// Add references for Stripe
+using Stripe;
+using Stripe.Checkout;
+using System.Configuration;
 
 namespace RetroVideoGameStore.Controllers
 {
@@ -11,10 +18,15 @@ namespace RetroVideoGameStore.Controllers
         // dB connection
         private readonly ApplicationDbContext _context;
 
+        // Configuration dependency needed to read Stripe Keys from appsettings.json or the secret key store
+        private IConfiguration _configuration;
+
         // Connect to dB whenever this controller is used
-        public ShopController(ApplicationDbContext context)
+        // This controller uses Dependency Injection - it requires a db connection when it is created
+        public ShopController(ApplicationDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
         }
         public IActionResult Index()
         {
@@ -145,6 +157,72 @@ namespace RetroVideoGameStore.Controllers
 
             // Load the payment page
             return RedirectToAction("Payment");
+        }
+
+        // GET: /Shop/Payment
+        [Authorize]
+        public IActionResult Payment()
+        {
+            // Get the order from the Session variable
+            var order = HttpContext.Session.GetObject<Order>("Order");
+            // Fetch and display the Order Total to the customer
+            ViewBag.Total = order.OrderTotal;
+            // Also use the ViewBag to set the PublishableKey, which we can read from the Configuration
+            ViewBag.PublishableKey = _configuration.GetSection("Stripe")["PublishableKey"];
+            // Load the Payment view
+            return View();
+        }
+
+        // POST: /Shop/Payment
+        [Authorize]
+        [HttpPost]
+        public ActionResult ProcessPayment()
+        {
+            // Get order from session variable
+            var order = HttpContext.Session.GetObject<Order>("Order");
+            var orderTotal = order.OrderTotal;
+
+            // Get Stripe Secret Key from the configuration
+            StripeConfiguration.ApiKey = _configuration.GetSection("Stripe")["SecretKey"];
+
+
+            // .NET integration code from https://docs.stripe.com/checkout/quickstart?lang=dotnet
+            var domain = "https://localhost:7001";
+            // Setup Stripe payment
+            var options = new SessionCreateOptions
+            {
+                PaymentMethodTypes = new List<string>
+                {
+                    "card"
+                },
+                LineItems = new List<SessionLineItemOptions>
+                {
+                  new SessionLineItemOptions
+                  {
+                    Quantity = 1,
+                    PriceData = new SessionLineItemPriceDataOptions
+                    {
+                        UnitAmount = (long?)(orderTotal * 100), // amount in cents
+                        Currency = "cad",
+                        ProductData = new SessionLineItemPriceDataProductDataOptions
+                        {
+                            Name = "Retro Video Game Store Purchase"
+                        }
+                    }
+                  },
+                },
+                Mode = "payment",
+                SuccessUrl = "https://" + Request.Host + "/Shop/SaveOrder",
+                CancelUrl = "https://" + Request.Host + "/Shop/Cart"
+            };
+            
+            // Now invoke Stripe payment
+            var service = new Stripe.Checkout.SessionService();
+            Stripe.Checkout.Session session = service.Create(options);
+
+            // After payment, redirect based on success/cancel URLs
+            Response.Headers.Add("Location", session.Url);
+            return new StatusCodeResult(303);
         }
     }
 }

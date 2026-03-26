@@ -1,0 +1,14 @@
+﻿    <script src="https://js.stripe.com/clover/stripe.js"></script>
+    <section>
+        <div class="product">
+            
+            <div class="description">
+                <h3>Total</h3>
+                <h5>@String.Format("{0:c}", ViewBag.Total)</h5>
+                <p>@ViewBag.PublishableKey</p>
+            </div>
+        </div>
+        <form action="/Shop/ProcessPayment" method="POST">
+            <button type="submit" id="checkout-button">Checkout</button>
+        </form>
+    </section>
