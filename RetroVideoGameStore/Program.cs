@@ -17,6 +17,10 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.Requ
 builder.Services.AddSession();
 builder.Services.AddControllersWithViews();
 
+// Inject the Configuration info to the controllers so the ShopController() can read API keys from appsettings.json
+// Register IConfiguration instance
+builder.Services.AddSingleton<IConfiguration>(builder.Configuration);
+
 // Adding Google OAuth
 builder.Services.AddAuthentication()
     .AddGoogle(options =>

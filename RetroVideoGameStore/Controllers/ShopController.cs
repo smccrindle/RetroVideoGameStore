@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http; // For HttpContext.Session.GetString/SetString
 using RetroVideoGameStore.Data;
 using RetroVideoGameStore.Models;
 
@@ -10,11 +11,16 @@ namespace RetroVideoGameStore.Controllers
     {
         // dB connection
         private readonly ApplicationDbContext _context;
+
+        // Configuration dependency needed to read Stripe API Keys from appsettings.json
+        private IConfiguration _configuration;
         
         // Connect to dB whenever this controller is used
-        public ShopController(ApplicationDbContext context)
+        // This controller uses Dependency Injection - it needs dB connection when it is created
+        public ShopController(ApplicationDbContext context, IConfiguration configuration)
         {
-            _context = context; 
+            _context = context;
+            _configuration = configuration;
         }
         public IActionResult Index()
         {
@@ -141,9 +147,23 @@ namespace RetroVideoGameStore.Controllers
                                 select c.Quantity * c.Price).Sum();
 
             // Now store order in a session variable
+            HttpContext.Session.SetObject("Order", order);
 
             // Load the payment page
-            return RedirectToAction("Payment");
+            return RedirectToAction("Pay");
+        }
+
+        // GET: /Shop/Pay
+        [Authorize]
+        public IActionResult Pay() {
+            // Get the order from the Session variable
+            var order = HttpContext.Session.GetObject<Order>("Order");
+            // Fetch and display the order total to the customer
+            ViewBag.Total = order.OrderTotal;
+            // We also need the PublishableKey from the configuration
+            ViewBag.PublishableKey = _configuration.GetSection("Stripe")["PublishableKey"];
+            // Load the Payment view
+            return View();
         }
     }
 }
