@@ -1,9 +1,15 @@
 ﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http; // for HttpContext.Session.GetString/SetString
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Http; // For HttpContext.Session.GetString/SetString
+using Microsoft.Extensions.Configuration;
 using RetroVideoGameStore.Data;
 using RetroVideoGameStore.Models;
+
+// Add references for Stripe
+using Stripe;
+using Stripe.Checkout;
+using System.Configuration;
 
 namespace RetroVideoGameStore.Controllers
 {
@@ -12,11 +18,11 @@ namespace RetroVideoGameStore.Controllers
         // dB connection
         private readonly ApplicationDbContext _context;
 
-        // Configuration dependency needed to read Stripe API Keys from appsettings.json
+        // Configuration dependency needed to read Stripe Keys from appsettings.json or the secret key store
         private IConfiguration _configuration;
-        
+
         // Connect to dB whenever this controller is used
-        // This controller uses Dependency Injection - it needs dB connection when it is created
+        // This controller uses Dependency Injection - it requires a db connection when it is created
         public ShopController(ApplicationDbContext context, IConfiguration configuration)
         {
             _context = context;
@@ -34,9 +40,10 @@ namespace RetroVideoGameStore.Controllers
         {
             // Get products in selected category
             var products = _context.Products.Where(p => p.CategoryId == id).OrderBy(products => products.Name).ToList();
-
+            
             // Load the browse page and pass it the list of products to display
             return View(products);
+
         }
 
         // Shop/AddToCart
@@ -45,15 +52,15 @@ namespace RetroVideoGameStore.Controllers
         {
             // Get current product price
             var price = _context.Products.Find(ProductId).Price;
-            // Identify the customer
+            // Identify the customer (they are probably anonymous)
             var customerId = GetCustomerId();
 
-            // Check to see if product is already in the cart
+            // Check to see if product already exists in the cart
             var cartItem = _context.Carts.SingleOrDefault(c => c.ProductId == ProductId && c.CustomerId == customerId);
 
             if (cartItem != null)
             {
-                // Product already exists, so update quantity instead
+                // Product already exists in cart, so update quantity instead
                 cartItem.Quantity += Quantity;
                 _context.Update(cartItem);
                 _context.SaveChanges();
@@ -69,15 +76,14 @@ namespace RetroVideoGameStore.Controllers
                     CustomerId = customerId,
                     DateCreated = DateTime.Now
                 };
-                // Use the Carts DbSet in ApplicationContext.cs to save to the dB
+                // Use the Carts  DbSet in ApplicationContext.cs to save to the dB
                 _context.Carts.Add(cart);
                 _context.SaveChanges();
             }
-            
+
             // Redirect to show the current cart
             return RedirectToAction("Cart");
         }
-
         private string GetCustomerId()
         {
             // Is there already a session variable holding an identifier for this customer?
@@ -94,15 +100,15 @@ namespace RetroVideoGameStore.Controllers
             return HttpContext.Session.GetString("CustomerId");
         }
 
-        // Shop/Cart
+        // GET: Shop/Cart
         public IActionResult Cart()
         {
             // Get CustomerId from the session variable
             var customerId = HttpContext.Session.GetString("CustomerId");
-            // Get items in the customer's cart
+            // Get items in the customer's cart (and add a reference to the parent object)
             var cartItems = _context.Carts.Include(c => c.Product).Where(c => c.CustomerId == customerId).ToList();
 
-            // Count number of items in cart and write session variable to display in navbar
+            // Count the number of items in the cart and write a session variable to display in the navbar
             var itemCount = (from c in _context.Carts
                              where c.CustomerId == customerId
                              select c.Quantity).Sum();
@@ -113,10 +119,11 @@ namespace RetroVideoGameStore.Controllers
         }
 
         // GET: /Shop/RemoveFromCart/12
-        public IActionResult RemoveFromCart(int id)
+        public IActionResult RemoveFromCart(int id) 
         {
             // Remove the selected item from the Carts table
             var cartItem = _context.Carts.Find(id);
+
             if (cartItem != null)
             {
                 _context.Carts.Remove(cartItem);
@@ -145,25 +152,72 @@ namespace RetroVideoGameStore.Controllers
             order.OrderTotal = (from c in _context.Carts
                                 where c.CustomerId == HttpContext.Session.GetString("CustomerId")
                                 select c.Quantity * c.Price).Sum();
-
             // Now store order in a session variable
             HttpContext.Session.SetObject("Order", order);
 
             // Load the payment page
-            return RedirectToAction("Pay");
+            return RedirectToAction("Payment");
         }
 
-        // GET: /Shop/Pay
+        // GET: /Shop/Payment
         [Authorize]
-        public IActionResult Pay() {
+        public IActionResult Payment()
+        {
             // Get the order from the Session variable
             var order = HttpContext.Session.GetObject<Order>("Order");
-            // Fetch and display the order total to the customer
+            // Fetch and display the Order Total to the customer
             ViewBag.Total = order.OrderTotal;
-            // We also need the PublishableKey from the configuration
+            // Also use the ViewBag to set the PublishableKey, which we can read from the Configuration
             ViewBag.PublishableKey = _configuration.GetSection("Stripe")["PublishableKey"];
             // Load the Payment view
             return View();
+        }
+
+        // POST: /Shop/ProcessPayment
+        // Code derived/adapted from https://docs.stripe.com/checkout/quickstart?lang=dotnet
+        [HttpPost]
+        [Authorize]
+        public ActionResult ProcessPayment()
+        {
+            // Get order from session variable
+            var order = HttpContext.Session.GetObject<Order>("Order");
+            var orderTotal = order.OrderTotal;
+            // Get Stripe Secret Key from the configuration
+            StripeConfiguration.ApiKey = _configuration.GetSection("Stripe")["SecretKey"];
+
+            var options = new SessionCreateOptions
+            {
+                PaymentMethodTypes = new List<string>
+                {
+                    "card"
+                },
+                LineItems = new List<SessionLineItemOptions>
+                {
+                  new SessionLineItemOptions
+                  {
+                    Quantity = 1,
+                    PriceData = new SessionLineItemPriceDataOptions
+                    {
+                        UnitAmount = (long?)(orderTotal * 100), // amount in cents
+                        Currency = "cad",
+                        ProductData = new SessionLineItemPriceDataProductDataOptions
+                        {
+                            Name = "Retro Video Game Store Purchase"
+                        }
+                    }
+                  },
+                },
+                Mode = "payment",
+                SuccessUrl = "https://" + Request.Host + "/Shop/SaveOrder",
+                CancelUrl = "https://" + Request.Host + "/Shop/Cart"
+            };
+            
+            // Now invoke Stripe payment
+            var service = new Stripe.Checkout.SessionService();
+            Stripe.Checkout.Session session = service.Create(options);
+
+            Response.Headers.Add("Location", session.Url);
+            return new StatusCodeResult(303);
         }
     }
 }
