@@ -24,7 +24,15 @@ namespace RetroVideoGameStore.Controllers
         // GET: Orders
         public async Task<IActionResult> Index()
         {
-            return View(await _context.Orders.Where(o => o.CustomerId == User.Identity.Name).ToListAsync());
+            if (User.IsInRole("Administrator"))
+            {
+                return View(await _context.Orders.OrderByDescending(o => o.OrderId).ToListAsync());
+            } 
+            else
+            {
+                return View(await _context.Orders.Where(o => o.CustomerId == User.Identity.Name).OrderByDescending(o => o.OrderId).ToListAsync());
+            }
+            
             //return View(await _context.Orders.ToListAsync());
         }
 
@@ -42,11 +50,15 @@ namespace RetroVideoGameStore.Controllers
             {
                 return NotFound();
             }
-            // Ensure current customer owns this order
-            if (User.Identity.Name != order.CustomerId)
+            if (!User.IsInRole("Administrator"))
             {
-                return Forbid();
+                // Ensure current customer owns this order
+                if (User.Identity.Name != order.CustomerId)
+                {
+                    return Forbid();
+                }
             }
+            
             return View(order);
         }
 
