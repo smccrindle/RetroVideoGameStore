@@ -156,12 +156,12 @@ namespace RetroVideoGameStore.Controllers
             HttpContext.Session.SetObject("Order", order);
 
             // Load the payment page
-            return RedirectToAction("Payment");
+            return RedirectToAction("Pay");
         }
 
         // GET: /Shop/Payment
         [Authorize]
-        public IActionResult Payment()
+        public IActionResult Pay()
         {
             // Get the order from the Session variable
             var order = HttpContext.Session.GetObject<Order>("Order");
@@ -219,5 +219,46 @@ namespace RetroVideoGameStore.Controllers
             Response.Headers.Add("Location", session.Url);
             return new StatusCodeResult(303);
         }
+
+        // GET: /Shop/SaveOrder
+        [Authorize]
+        public IActionResult SaveOrder()
+        {
+            // Grab the current order from the session variable
+            var order = HttpContext.Session.GetObject<Order>("Order");
+
+            // Create a new order in the dB - this generates and copies the new Id to this order object
+            _context.Orders.Add(order);
+            _context.SaveChanges();
+
+            // Copy each item from the user's cart to a new OrderDetail record
+            var cartItems = _context.Carts.Where(c => c.CustomerId == HttpContext.Session.GetString("CustomerId"));
+
+            foreach (var item in cartItems)
+            {
+                var orderDetail = new OrderDetail
+                {
+                    OrderId = order.OrderId,
+                    ProductId = item.ProductId,
+                    Quantity = item.Quantity,
+                    Price = item.Price
+                };
+
+                _context.OrderDetails.Add(orderDetail);
+            }
+            // Save new line items to the dB
+            _context.SaveChanges();
+
+            // Empty the cart
+            foreach (var item in cartItems)
+            {
+                _context.Carts.Remove(item);
+            }
+            _context.SaveChanges();
+
+            // Load the Details page for the new order
+            return RedirectToAction("Details", "Orders", new { @id = order.OrderId });
+        }
+
     }
 }
