@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="RetroVideoGameStore/RetroVideoGameStore.csproj" />
+  <Project Path="RetroVideoGameStoreTest/RetroVideoGameStoreTest.csproj" Id="04f45535-bc1b-4922-9e35-9db9847a26fe" />
 </Solution>
